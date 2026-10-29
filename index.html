@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dokter Tanaman - Multi Format Upload</title>
+    <!-- Library PDF.js untuk membaca dan merender file PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #f4f9f4;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: #ffffff;
+            width: 100%;
+            max-width: 520px;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #2e7d32;
+            font-size: 24px;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        p.subtitle {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
+        .upload-area {
+            border: 2px dashed #81c784;
+            border-radius: 8px;
+            padding: 25px;
+            text-align: center;
+            background-color: #f1f8e9;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            background-color: #e8f5e9;
+            border-color: #2e7d32;
+        }
+
+        .upload-icon {
+            font-size: 32px;
+            margin-bottom: 8px;
+        }
+
+        .upload-area p {
+            color: #388e3c;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .supported-formats {
+            font-size: 12px;
+            color: #777;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .preview-container {
+            margin-top: 15px;
+            text-align: center;
+            display: none;
+        }
+
+        #imagePreview, #pdfCanvas {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+            margin-top: 5px;
+        }
+
+        .file-info {
+            font-size: 13px;
+            color: #555;
+            margin-top: 5px;
+            word-break: break-all;
+        }
+
+        .btn {
+            width: 100%;
+            background-color: #2e7d32;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: 0.2s;
+        }
+
+        .btn:hover {
+            background-color: #1b5e20;
+        }
+
+        .btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .result-box {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #eef7ee;
+            border-left: 5px solid #2e7d32;
+            display: none;
+        }
+
+        .result-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1b5e20;
+            margin-bottom: 5px;
+        }
+
+        .accuracy {
+            font-size: 12px;
+            color: #555;
+            margin-bottom: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            margin-top: 15px;
+            font-weight: bold;
+            color: #388e3c;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🌱 Dokter Tanaman</h1>
+    <p class="subtitle">Unggah dokumen atau foto bagian tanaman yang sakit</p>
+
+    <!-- Area Unggah (Bisa klik, camera, drag & drop) -->
+    <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <div class="upload-icon">📁 / 📷</div>
+        <p>Klik atau Tarik File ke Sini</p>
+        <span class="supported-formats">Mendukung Format: JPG, JPEG, PNG, WEBP, PDF</span>
+        <!-- accept mendukung gambar dan PDF -->
+        <input type="file" id="fileInput" accept="image/jpeg, image/png, image/webp, application/pdf" onchange="handleFileSelect(event)">
+    </div>
+
+    <!-- Area Pratinjau Gambar / PDF -->
+    <div class="preview-container" id="previewContainer">
+        <!-- Pratinjau Gambar Biasa -->
+        <img id="imagePreview" src="#" alt="Pratinjau Tanaman" style="display: none;">
+        <!-- Pratinjau PDF -->
+        <canvas id="pdfCanvas" style="display: none;"></canvas>
+        <div class="file-info" id="fileName"></div>
+    </div>
+
+    <!-- Tombol Analisis -->
+    <button class="btn" id="analyzeBtn" onclick="analyzeFile()" disabled>Deteksi Hama & Penyakit</button>
+
+    <!-- Status Memuat -->
+    <div class="loading" id="loadingText">⏳ Menganalisis file...</div>
+
+    <!-- Hasil Diagnosis -->
+    <div class="result-box" id="resultBox">
+        <div class="result-title" id="diseaseName">-</div>
+        <div class="accuracy" id="diseaseAccuracy">Tingkat Akurasi: -</div>
+        <hr style="margin: 10px 0; border: 0; border-top: 1px solid #ccc;">
+        <p><strong>Rekomendasi Penanganan:</strong></p>
+        <p id="diseaseSolution" style="margin-top: 5px; font-size: 14px; color: #444;">-</p>
+    </div>
+</div>
+
+<script>
+    // Konfigurasi Worker PDF.js
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    const fileInput = document.getElementById('fileInput');
+    const imagePreview = document.getElementById('imagePreview');
+    const pdfCanvas = document.getElementById('pdfCanvas');
+    const previewContainer = document.getElementById('previewContainer');
+    const fileName = document.getElementById('fileName');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const loadingText = document.getElementById('loadingText');
+    const resultBox = document.getElementById('resultBox');
+    const dropZone = document.getElementById('dropZone');
+
+    // Pengaturan Drag and Drop File
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            fileInput.files = files;
+            processFile(files[0]);
+        }
+    });
+
+    // Menangani Pemilihan File dari Input
+    function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) {
+            processFile(file);
+        }
+    }
+
+    // Memproses Format File (Gambar vs PDF)
+    function processFile(file) {
+        resultBox.style.display = 'none';
+        previewContainer.style.display = 'block';
+        fileName.innerText = `File terdeteksi: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+        
+        if (file.type === 'application/pdf') {
+            // Sembunyikan elemen gambar, tampilkan canvas PDF
+            imagePreview.style.display = 'none';
+            pdfCanvas.style.display = 'inline-block';
+            renderPDF(file);
+        } else if (file.type.startsWith('image/')) {
+            // Sembunyikan canvas PDF, tampilkan elemen gambar
+            pdfCanvas.style.display = 'none';
+            imagePreview.style.display = 'inline-block';
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imagePreview.src = e.target.result;
+                analyzeBtn.disabled = false;
+            };
+            reader.readAsDataURL(file);
+        } else {
+            alert('Format file tidak didukung! Gunakan file gambar (JPG, PNG, WEBP) atau PDF.');
+            previewContainer.style.display = 'none';
+            analyzeBtn.disabled = true;
+        }
+    }
+
+    // Render Halaman Pertama PDF ke Canvas
+    function renderPDF(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const typedarray = new Uint8Array(e.target.result);
+            pdfjsLib.getDocument(typedarray).promise.then(pdf => {
+                // Ambil halaman pertama
+                pdf.getPage(1).then(page => {
+                    const viewport = page.getViewport({ scale: 1 });
+                    const context = pdfCanvas.getContext('2d');
+                    
+                    pdfCanvas.height = viewport.height;
+                    pdfCanvas.width = viewport.width;
+
+                    const renderContext = {
+                        canvasContext: context,
+                        viewport: viewport
+                    };
+                    
+                    page.render(renderContext).promise.then(() => {
+                        analyzeBtn.disabled = false;
+                    });
+                });
+            }).catch(error => {
+                alert('Gagal membaca file PDF. Pastikan file tidak rusak.');
+                analyzeBtn.disabled = true;
+            });
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // Simulasi Proses Analisis
+    function analyzeFile() {
+        loadingText.style.display = 'block';
+        resultBox.style.display = 'none';
+        analyzeBtn.disabled = true;
+
+        setTimeout(() => {
+            loadingText.style.display = 'none';
+            analyzeBtn.disabled = false;
+
+            const mockResults = [
+                {
+                    name: "Kutu Daun (Aphids)",
+                    accuracy: "95%",
+                    solution: "Semprotkan larutan sabun cuci piring tipis atau minyak neem pada bagian bawah daun. Gunakan insektisida nabati jika populasi tinggi."
+                },
+                {
+                    name: "Bercak Daun Jamur (Cercospora)",
+                    accuracy: "91%",
+                    solution: "Potong dan buang daun terinfeksi. Hindari menyiram langsung ke permukaan daun dan berikan fungisida berbahan aktif tembaga."
+                },
+                {
+                    name: "Ulat Grayak (Spodoptera litura)",
+                    accuracy: "89%",
+                    solution: "Ambil ulat secara manual pada pagi/malam hari. Gunakan bio-pestisida berbasis Bacillus thuringiensis (Bt)."
+                },
+                {
+                    name: "Tanaman Sehat",
+                    accuracy: "98%",
+                    solution: "Tidak ditemukan tanda penyakit atau hama. Pertahankan kelembapan tanah dan pemupukan rutin."
+                }
+            ];
+
+            const randomResult = mockResults[Math.floor(Math.random() * mockResults.length)];
+
+            document.getElementById('diseaseName').innerText = randomResult.name;
+            document.getElementById('diseaseAccuracy').innerText = "Tingkat Akurasi: " + randomResult.accuracy;
+            document.getElementById('diseaseSolution').innerText = randomResult.solution;
+
+            resultBox.style.display = 'block';
+        }, 2000);
+    }
+</script>
+
+</body>
+</html>
